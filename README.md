@@ -7,3 +7,5 @@ The goal of this project and analysis was to find what pitchers throw pitches th
 1. Alex Chamberlain's Pitch Tableu v5.
 2. FanGraphs
 3. Baseball Savant
+
+R Shiny App: https://anas0c-aidan-beilke.shinyapps.io/Try_XLSX/
