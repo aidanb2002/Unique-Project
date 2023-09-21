@@ -6,54 +6,52 @@ ml <- joined_table %>%
   select(full_name, plus, wOBA, Hard.)
 
 set.seed(123)
-splitIndex <- createDataPartition(ml$wOBA, p = 0.8, list = FALSE)
-train_data <- ml[splitIndex, ]
-test_data <- ml[-splitIndex, ]
+# Features (excluding 'full_name' and target 'wOBA')
+features <- ml %>% select(-full_name, -Hard.)
 
-# Separate the target variable and input features for both training and test datasets
-train_label <- train_data$wOBA
-train_input <- as.matrix(train_data[, "plus", drop=FALSE])
+# Convert features to matrix format as required by xgboost
+data_input <- as.matrix(features)
 
-test_label <- test_data$wOBA
-test_input <- as.matrix(test_data[, "plus", drop=FALSE])
+# Target variable
+data_label <- ml$Hard.
 
-# Train the XGBoost model using cross-validation
-dtrain <- xgb.DMatrix(data=train_input, label=train_label)
+
 params <- list(
   objective = "reg:squarederror",
   eta = 0.01,
   max_depth = 6,
-  eval_metric = "rmse"
+  eval_metric = "rmse",
+  # Include regularization parameters if desired
+  alpha = 0.01,      # L1 regularization term
+  lambda = 1         # L2 regularization term
 )
 
-# Perform cross-validation
-cv_model <- xgb.cv(params=params, data=dtrain, nrounds=500, nfold=5, 
-                   early_stopping_rounds=10, verbose=0)
 
-# Train the model using the optimal number of rounds
-optimal_nrounds <- cv_model$best_iteration
-model <- xgb.train(params=params, data=dtrain, nrounds=optimal_nrounds)
+# Convert data to DMatrix format
+dmatrix_data <- xgb.DMatrix(data=data_input, label=data_label)
 
-# Create a DMatrix for the entire dataset
-full_data_input <- as.matrix(ml[, "plus", drop=FALSE])
-dfull <- xgb.DMatrix(data=full_data_input)
+# Perform k-fold CV and get predictions for each fold
+cv_results <- xgb.cv(
+  params=params, 
+  data=dmatrix_data, 
+  nrounds=100,  # number of boosting rounds. Might want to increase this.
+  nfold=5,      # 5-fold CV
+  prediction=TRUE  # to get predictions for each fold
+)
 
-# Predict on the full dataset
-full_predictions <- predict(model, newdata=dfull)
+# Extract predictions
+predictions <- cv_results$pred
 
 # Add predictions to the full dataset
-joined_table$predicted_wOBA <- full_predictions
+joined_table$predicted_hhr <- predictions
 
 joined_table <- joined_table %>% 
-  mutate(predicted_wOBA = round(predicted_wOBA, 3),
-         new_plus = round((mean(predicted_wOBA) / predicted_wOBA) * 100))
-
-
+  mutate(predicted_hhr = round(predicted_hhr, 3),
+         new_plus = round((mean(predicted_hhr) / predicted_hhr)*100))
 
 setwd("/Users/aidanbeilke/Desktop/R Documents/Shiny App")
 
 write.xlsx(joined_table, file = "joined_table.xlsx")
   
-  
-  
+
   
