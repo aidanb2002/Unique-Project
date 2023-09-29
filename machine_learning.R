@@ -1,57 +1,40 @@
-library(xgboost)
+library(tidyverse)
+library(Boruta)
 library(caret)
-library(dplyr)
+library(randomForest)
 
-ml <- joined_table %>% 
-  select(full_name, plus, wOBA, Hard.)
+ml <- all %>% 
+  select(full_name,Pitch_Type ,vert_norm, va_norm, rpm_norm, horiz_norm, gyro_norm, mph_norm, wOBA, Year) %>% 
+  na.omit() %>% 
+  group_by(full_name, Pitch_Type, Year) %>% 
+  summarise(vert_norm = mean(vert_norm, na.rm = T),
+            va_norm = mean(va_norm, na.rm = T),
+            rpm_norm = mean(rpm_norm, na.rm = T),
+            horiz_norm = mean(horiz_norm, na.rm = T),
+            gyro_norm = mean(gyro_norm, na.rm = T),
+            mph_norm = mean(mph_norm, na.rm = T),
+            wOBA = mean(wOBA, na.rm = T)) 
 
+# Feature Selection
 set.seed(123)
-# Features (excluding 'full_name' and target 'wOBA')
-features <- ml %>% select(-full_name, -Hard.)
+boruta <- Boruta(wOBA ~ vert_norm + va_norm + rpm_norm + horiz_norm + gyro_norm + mph_norm, data = ml, doTrace = 2)
 
-# Convert features to matrix format as required by xgboost
-data_input <- as.matrix(features)
+plot(boruta, las = 2, cex.axis = 0.5)
+plotImpHistory(boruta)
+getNonRejectedFormula(boruta)
 
-# Target variable
-data_label <- ml$Hard.
+# Data Partition
+set.seed(222)
+train <- subset(ml, Year %in% c(2021, 2022))
+test <- subset(ml, Year == 2023)
 
+# Random Forest Model
+set.seed(333)
+rf10 <- randomForest(wOBA ~ vert_norm + va_norm + rpm_norm + horiz_norm + gyro_norm + mph_norm, data = train)
 
-params <- list(
-  objective = "reg:squarederror",
-  eta = 0.01,
-  max_depth = 6,
-  eval_metric = "rmse",
-  # Include regularization parameters if desired
-  alpha = 0.01,      # L1 regularization term
-  lambda = 1         # L2 regularization term
-)
+p <- predict(rf10, test)
 
+test$unique_pred <- p
 
-# Convert data to DMatrix format
-dmatrix_data <- xgb.DMatrix(data=data_input, label=data_label)
+test$unique_pred <- (mean(test$unique_pred) / test$unique_pred) * 100
 
-# Perform k-fold CV and get predictions for each fold
-cv_results <- xgb.cv(
-  params=params, 
-  data=dmatrix_data, 
-  nrounds=100,  # number of boosting rounds. Might want to increase this.
-  nfold=5,      # 5-fold CV
-  prediction=TRUE  # to get predictions for each fold
-)
-
-# Extract predictions
-predictions <- cv_results$pred
-
-# Add predictions to the full dataset
-joined_table$predicted_hhr <- predictions
-
-joined_table <- joined_table %>% 
-  mutate(predicted_hhr = round(predicted_hhr, 3),
-         new_plus = round((mean(predicted_hhr) / predicted_hhr)*100))
-
-setwd("/Users/aidanbeilke/Desktop/R Documents/Shiny App")
-
-write.xlsx(joined_table, file = "joined_table.xlsx")
-  
-
-  
